@@ -51,9 +51,9 @@ jobs:
     runs-on: ${{ matrix.runner }}
     steps:
       - name: Checkout castle-lazarus
-        uses: actions/checkout@v6
+        uses: actions/checkout@v7
       - name: Checkout castle-fpc
-        uses: actions/checkout@v6
+        uses: actions/checkout@v7
         with:
           repository: castle-engine/castle-fpc
           path: castle-fpc
@@ -112,9 +112,9 @@ jobs:
 
     steps:
       - name: Checkout castle-lazarus
-        uses: actions/checkout@v6
+        uses: actions/checkout@v7
       - name: Checkout castle-fpc
-        uses: actions/checkout@v6
+        uses: actions/checkout@v7
         with:
           repository: castle-engine/castle-fpc
           path: castle-fpc
@@ -147,7 +147,7 @@ jobs:
     env:
       release_tag: snapshot
     steps:
-    - uses: actions/checkout@v6
+    - uses: actions/checkout@v7
     - name: Update Release Tag
       if: ${{ github.ref == 'refs/heads/master' }}
       run: |
