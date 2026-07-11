@@ -182,5 +182,9 @@ do_lazarus_sources_get
 do_fpc_get
 do_calculate_fpc_opts
 do_lazarus_build
+if [ -n "${SIGN_EXECUTABLES:-}" ]; then
+  # sign lazarus, lazbuild, startlazarus (on Windows), and anything else.
+  "${SIGN_EXECUTABLES}" lazarus/
+fi
 do_pack_zip
 do_test_program

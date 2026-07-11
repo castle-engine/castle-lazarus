@@ -17,6 +17,14 @@ defaults:
   run:
     shell: bash
 
+# Necessary permissions to:
+# - sign into Azure by GitHub Actions, to sign Windows executables.
+#   (id-token: write, contents: at least read).
+# - send to GitHub release (contents: write).
+permissions:
+  id-token: write
+  contents: write
+
 jobs:
   build_native:
     name: Build Native
@@ -58,6 +66,15 @@ jobs:
           repository: castle-engine/castle-fpc
           path: castle-fpc
 
+      # To write multi-line scripts in steps below,
+      # we have to set SHELLOPTS=igncr, otherwise Cygwin/MinGW bash
+      # fails because GitHub Actions create temp scripts with CRLF
+      # line endings.
+      # See https://github.com/cygwinports/bash for docs of "igncr".
+      - name: Make bash multi-line scripts execute OK on Windows
+        if: ${{ runner.os == 'Windows' }}
+        run: echo "SHELLOPTS=igncr" >> $GITHUB_ENV
+
       - name: Install dependencies (Windows)
         if: ${{ matrix.runner == 'windows-latest' }}
         run: choco install wget
@@ -65,8 +82,45 @@ jobs:
         if: ${{ matrix.runner == 'ubuntu-latest' }}
         run: ./install_linux_dependencies
 
+      - name: Get Castle Game Engine CI scripts (for signing)
+        if: ${{ matrix.build_os == 'darwin' || matrix.build_os == 'win64' }}
+        run: |
+          cd /tmp/ # temporary directory, to be separate from the current project files
+          git clone https://github.com/castle-engine/castle-build-ci.git \
+            --depth=1 --single-branch --branch=master
+
+      - name: Azure Login (for signing on Windows)
+        if: ${{ matrix.build_os == 'win64' && github.ref == 'refs/heads/master' }}
+        uses: azure/login@v3
+        with:
+          client-id: ${{ secrets.AZURE_CLIENT_ID }}
+          tenant-id: ${{ secrets.AZURE_TENANT_ID }}
+          subscription-id: ${{ secrets.AZURE_SUBSCRIPTION_ID }}
+
       - name: Build Lazarus
-        run: ./build_lazarus ${{ matrix.build_os }} ${{ matrix.build_cpu }}
+        env:
+          # for Apple codesigning
+          APPLE_IDENTITY: ${{ vars.APPLE_IDENTITY }}
+          APPLE_BUILD_CERTIFICATE_BASE64: ${{ secrets.APPLE_BUILD_CERTIFICATE_BASE64 }}
+          APPLE_P12_PASSWORD: ${{ secrets.APPLE_P12_PASSWORD }}
+          APPLE_KEYCHAIN_PASSWORD: ${{ secrets.APPLE_KEYCHAIN_PASSWORD }}
+          # for Azure codesigning
+          AZURE_ENDPOINT: ${{ vars.AZURE_ENDPOINT }}
+          AZURE_CODESIGNING_ACCOUNT_NAME: ${{ vars.AZURE_CODESIGNING_ACCOUNT_NAME }}
+          AZURE_CERTIFICATE_PROFILE_NAME: ${{ vars.AZURE_CERTIFICATE_PROFILE_NAME }}
+        run: |
+          # prepare signing for macOS
+          if [[ "${{ matrix.build_os }}" = "darwin" && "${{ github.ref }}" = "refs/heads/master" ]]; then
+            /tmp/castle-build-ci/apple/setup_signing
+            export SIGN_EXECUTABLES="/tmp/castle-build-ci/apple/sign_executables"
+          fi
+          # prepare signing for Windows
+          if [[ "${{ matrix.build_os }}" = "win64" && "${{ github.ref }}" = "refs/heads/master" ]]; then
+            export AZURE_SIGNING_CLIENT_PARENT="$RUNNER_TEMP/sign-tools/"
+            export SIGN_EXECUTABLES="/tmp/castle-build-ci/windows/sign_executables"
+            /tmp/castle-build-ci/windows/setup_signing
+          fi
+          ./build_lazarus ${{ matrix.build_os }} ${{ matrix.build_cpu }}
 
       - name: Release Artifacts
         if: ${{ github.ref == 'refs/heads/master' }}
@@ -77,7 +131,17 @@ jobs:
       # Additionally, when on Win64, build and release also Win32 version.
       - name: Build Lazarus (for Win32)
         if: ${{ matrix.build_os == 'win64' && matrix.build_cpu == 'x86_64' }}
-        run: ./build_lazarus win32 i386
+        env:
+          # for Azure codesigning
+          AZURE_ENDPOINT: ${{ vars.AZURE_ENDPOINT }}
+          AZURE_CODESIGNING_ACCOUNT_NAME: ${{ vars.AZURE_CODESIGNING_ACCOUNT_NAME }}
+          AZURE_CERTIFICATE_PROFILE_NAME: ${{ vars.AZURE_CERTIFICATE_PROFILE_NAME }}
+        run: |
+          if [[ "${{ matrix.build_os }}" = "win64" && "${{ github.ref }}" = "refs/heads/master" ]]; then
+            export AZURE_SIGNING_CLIENT_PARENT="$RUNNER_TEMP/sign-tools/"
+            export SIGN_EXECUTABLES="/tmp/castle-build-ci/windows/sign_executables"
+          fi
+          ./build_lazarus win32 i386
       - name: Release Artifacts (for Win32)
         if: ${{ matrix.build_os == 'win64' && matrix.build_cpu == 'x86_64' && github.ref == 'refs/heads/master' }}
         run: gh release --repo ${{ github.repository }} upload snapshot --clobber lazarus-*.zip
