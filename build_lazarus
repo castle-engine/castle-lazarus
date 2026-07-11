@@ -25,6 +25,7 @@ OS=$1
 CPU=$2
 shift 2
 
+# shellcheck disable=SC1091
 source castle-fpc/build_utilities
 
 # ---------------------------------------------------------------------
@@ -129,9 +130,9 @@ do_pack_zip ()
     # We use -snl to avoid warnings (and exit with non-zero status)
     # because of invalid symlink "lazarus/components/chmhelp/lhelp/lhelp.app/Contents/MacOS/lhelp" .
 
-    7z a ${ZIP_NAME} lazarus/ -snl
+    7z a "${ZIP_NAME}" lazarus/ -snl
   else
-    zip -r ${ZIP_NAME} lazarus/
+    zip -r "${ZIP_NAME}" lazarus/
   fi
 }
 
@@ -160,7 +161,8 @@ do_test_program ()
     return
   fi
 
-  local TEST_PROGRAM_OUTPUT="`./test_project/test_project`"
+  local TEST_PROGRAM_OUTPUT
+  TEST_PROGRAM_OUTPUT="$(./test_project/test_project)"
   if [ "$IS_WINDOWS" = 'true' ]; then
     # remove \r at the end, following https://superuser.com/questions/489180/remove-r-from-echoing-out-in-bash-script
     TEST_PROGRAM_OUTPUT="${TEST_PROGRAM_OUTPUT%%[[:cntrl:]]}"
